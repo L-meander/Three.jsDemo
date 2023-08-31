@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My first three.js app</title>
+  <style>
+    body{
+      margin: 0;
+      padding: 0;
+    }
+  /*  画布样式*/
+   canvas{
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+<script src="js/three.js"></script>
+<script src="js/OrbitControls.js"></script>
+<script src="js/Detector.js" type="text/javascript" charset="utf-8"></script>
+<script src="js/Stats.js" type="text/javascript" charset="utf-8"></script>
+<script src="js/Projector.js"></script>
+<script>
+	
+	// 处理服务器打开、关闭时，信息的展示和隐藏
+	function openServer(o) {
+	  loginfo('open:'+o.container.info.id+','+o.container.info.name+'--'+o.info.id+','+o.info.name);
+	}
+	function closeServer(o) {
+	  loginfo('close:'+o.container.info.id+','+o.container.info.name+'--'+o.info.id+','+o.info.name);
+	}
+	
+	// 处理机柜打开、关闭时，信息的展示和隐藏
+	function openCabinet(o) {
+	  loginfo('open:'+o.info.id+','+o.info.name);
+	}
+	function closeCabinet(o) {
+	  loginfo('close:'+o.info.id+','+o.info.name);
+	}
+	
+	// 处理鼠标HHover服务器时，服务器信息的内容渲染
+	function hoverServer(o) {
+	  openHover(o.info.uuid, function() {
+	    // show info
+	    loginfo('open:'+o.container.info.id+','+o.container.info.name+'--'+o.info.id+','+o.info.name);
+	  });
+	}
+	
+	// 处理鼠标HHover机柜时，机柜信息的内容渲染
+	function hoverCabinet(o) {
+	  openHover(o.info.uuid, function() {
+	    loginfo('hover:'+o.info.id+','+o.info.name);
+	  });
+	}
+	
+	// 鼠标Hover时的通用方法
+	var curHoverUUID = null;
+	function openHover(hoverUUID, callback) {
+	  if (curHoverUUID == hoverUUID) return;
+	  curHoverUUID = hoverUUID;
+	  callback();
+	}
+	function closeHover() {
+	  curHoverUUID = null;
+	}
+	
+	
+	// 创建场景、相机、渲染器、光源等
+	var scene,camera,renderer,point,cube,controls,stats;
+	var clock = new THREE.Clock();
+	var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
+	
+	var targetList = [];
+	var projector, mouse = { x: 0, y: 0 };
+	
+	// 定义机柜、服务器数据
+	var model = [
+	  {
+	    cabinet: 
+	    {
+	      'uuid': '1',
+	      'id': 1, 
+	      'name':'1号机柜', 
+	      'size': {w: 30, h: 70, d: 30}, // 尺寸
+	      'position': {x: 0, y: 0, z: 50}, // 位置
+	      'servers': [
+	        {'uuid': '11', 'id':11, 'name':'1号服务器', 'ip':'', 'apps': ''},
+	        {'uuid': '12', 'id':12, 'name':'2号服务器', 'ip':'', 'apps': ''},
+	        {'uuid': '13', 'id':13, 'name':'3号服务器', 'ip':'', 'apps': ''},
+	        {'uuid': '14', 'id':14, 'name':'4号服务器', 'ip':'', 'apps': ''},
+	        {'uuid': '15', 'id':15, 'name':'5号服务器', 'ip':'', 'apps': ''},
+	        {'uuid': '16', 'id':16, 'name':'6号服务器', 'ip':'', 'apps': ''},
+	        {'uuid': '17', 'id':17, 'name':'7号服务器', 'ip':'', 'apps': ''}
+	      ]
+	    }
+	  },
+	  {
+	    cabinet: 
+	    {
+	      'uuid': '2',
+	      'id': 2, 
+	      'name':'2号机柜', 
+	      'size': {w: 30, h: 70, d: 30}, // 尺寸 宽、高、深
+	      'position': {x: 50, y: 0, z: -50}, // 位置
+	      'servers': [
+	        {'uuid': '21', 'id':21, 'name':'', 'ip':'', 'apps': ''}
+	      ]
+	    }
+	  },
+	  {
+	    cabinet: 
+	    {
+	      'uuid': '3',
+	      'id': 3, 
+	      'name':'3号机柜', 
+	      'size': {w: 30, h: 70, d: 30}, // 尺寸
+	      'position': {x: -50, y: 0, z: -50}, // 位置
+	      'servers': [
+	        {'uuid': '31', 'id':31, 'name':'', 'ip':'', 'apps': ''}
+	      ]
+	    }
+	  }
+	];
+	
+	init();
+	// 初始化
+	function init(){
+		// 场景
+		scene = new THREE.Scene();
+		
+		// 相机
+		var VIEW_ANGLE = 60, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.1, FAR = 2000; 
+		camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+		camera.position.set(0,500,700);
+		camera.lookAt(scene.position);
+		scene.add(camera);
+		
+		// 光源
+		light = new THREE.PointLight(0xffffff);
+		light.position.set(0,100,0);
+		scene.add(light);
+		
+		// 初始化各种模型
+		initModels();
+		
+		projector = new THREE.Projector();
+		
+		// 监听鼠标事件
+		document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+		document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+		
+		// 渲染器
+		if ( Detector.webgl )
+		  renderer = new THREE.WebGLRenderer( {antialias:true} );
+		else
+		  renderer = new THREE.CanvasRenderer();
+		renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+		//renderer.setClearColor(0xffffff, 1);
+		document.body.appendChild(renderer.domElement);
+		function render(){
+			renderer.render(scene, camera);
+		};
+		render();
+		
+		// Controls
+		controls = new THREE.OrbitControls(camera, renderer.domElement);
+		controls.addEventListener('change', render);
+		
+		// Stats
+		stats = new Stats();
+		stats.domElement.style.position = 'absolute';
+		stats.domElement.style.top = '0px';
+		stats.domElement.style.zIndex = 100;
+		document.body.appendChild( stats.domElement );	
+		
+	};
+	
+	// 初始化各类模型
+	function initModels(){
+		// 地板
+		createFloor(1024, 800);
+		
+		// 墙
+		createWall(600, 80, 0, 41, -150, 0, 0, 0);
+		createWall(400, 80, -100, 41, 300, 0, 0, 0);
+		createWall(140, 80, 230, 41, 300, 0, 0, 0);
+		createWall(450, 80, -296, 41, 78, 0, -Math.PI / 2, 0);
+		createWall(450, 80, 296, 41, 78, 0, -Math.PI / 2, 0);
+		
+		// 门
+		var door_right = createDoor( 70, 80, 130, 41, 300, 0, 0, 0);
+		door_right.toggle = function(o) {
+		  if ( o.rotation.y == 0 ) {
+		    o.rotation.y = o.rotation.y + Math.PI / 2;
+		    o.position.x = o.position.x + 25;
+		    o.position.z = o.position.z + 25;
+		  } else {
+		    o.rotation.y = o.rotation.y - Math.PI / 2;
+		    o.position.x = o.position.x - 25;
+		    o.position.z = o.position.z - 25;
+		  }
+		};
+		
+		// 机柜
+		//createCabinet(30, 70, 30, -50, 0, -50);
+		for (var i=0; i<model.length; i++) {
+		  var c = model[i].cabinet;
+		  createCabinet(c.size.w, c.size.h, c.size.d, c.position.x, c.position.y, c.position.z, c);
+		}
+	};
+	
+	// 创建地板
+	function createFloor(width, height){
+		var floorGeometry = new THREE.PlaneGeometry(width, height);
+		var floorMaterial = new THREE.MeshBasicMaterial({color:0xa09d98, side:THREE.DoubleSide});
+		var floor = new THREE.Mesh(floorGeometry, floorMaterial);
+		floor.rotation.x = Math.PI / 2;
+		scene.add(floor);
+		targetList.push(floor);
+		return floor;
+	};
+	
+	// 创建墙体
+	function createWall(w, h, px, py, pz, rx, ry, rz){
+		var wallGeometry = new THREE.BoxGeometry(w, h, 10);
+		var wallMaterial = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.DoubleSide});
+		var wall = new THREE.Mesh(wallGeometry, wallMaterial);
+		wall.position.x = px;
+		wall.position.y = py;
+		wall.position.z = pz;
+		wall.rotation.y = ry;
+		scene.add(wall);
+		targetList.push(wall);
+		return wall;
+	}
+	
+	// 创建门
+	function createDoor(w, h, px, py, pz, rx, ry, rz){
+		var doorGeometry = new THREE.BoxGeometry(w, h, 5);
+		var doorMaterial = new THREE.MeshBasicMaterial({color: 0xb9d3ff, side:THREE.DoubleSide});
+		var door = new THREE.Mesh(doorGeometry, doorMaterial);
+		
+		door.position.x = px;
+		door.position.y = py;
+		door.position.z = pz;
+		
+		scene.add(door);
+		targetList.push(door);
+		
+		return door;
+	}
+	
+	// 创建机柜
+	function createCabinet(w, h, d, px, py, pz, c){
+		var cabinet = {};
+		
+		// 机柜后面
+		var cabinetbackGeometry = new THREE.BoxGeometry(w, h, 2);
+		var cabinetbackMaterial = new THREE.MeshBasicMaterial({color: 0x777777, opacity: 0.2, transparent: true });
+		var cabinetback = new THREE.Mesh(cabinetbackGeometry, cabinetbackMaterial);
+		cabinetback.position.x = px;
+		cabinetback.position.y = py + h / 2 + 1;
+		cabinetback.position.z = pz - d / 2 + 2;
+		scene.add(cabinetback);
+		cabinet.back = cabinetback;
+		targetList.push(cabinetback);
+		
+		// 机柜的左右面
+		var cabinetSideGeometry = new THREE.BoxGeometry(w, h, 2);
+		var cabinetSideMaterial = new THREE.MeshBasicMaterial({color: 0x777777, opacity: 0.9, transparent: true });
+		var cabinetLeft = new THREE.Mesh(cabinetSideGeometry, cabinetSideMaterial);
+		var cabinetRight = new THREE.Mesh(cabinetSideGeometry, cabinetSideMaterial);
+		
+		cabinetLeft.position.x = px + w / 2 -1;
+		cabinetLeft.position.y = py + h / 2 + 1;
+		cabinetLeft.position.z = pz;
+		cabinetLeft.rotation.y = Math.PI / 2;
+		
+		cabinetRight.position.x = px - w / 2 +1;
+		cabinetRight.position.y = py + h / 2 + 1;
+		cabinetRight.position.z = pz;
+		cabinetRight.rotation.y = -Math.PI / 2;
+		
+		scene.add(cabinetLeft);
+		scene.add(cabinetRight);
+		targetList.push(cabinetLeft);
+		targetList.push(cabinetRight);
+		cabinet.left = cabinetLeft;
+		cabinet.right = cabinetRight;
+		
+		// 机柜的上下面
+		var cabinetTBGeometry = new THREE.BoxGeometry(w, 2, d);
+		var cabinetTBMaterial = new THREE.MeshBasicMaterial({color:0x222222, transparent:true});
+		var cabinetTop = new THREE.Mesh(cabinetTBGeometry, cabinetTBMaterial);
+		var cabinetBottom = new THREE.Mesh(cabinetTBGeometry, cabinetTBMaterial);
+		
+		cabinetTop.position.x = px;
+		cabinetTop.position.y = py + h + 2;
+		cabinetTop.position.z = pz;
+		
+		cabinetBottom.position.x = px;
+		cabinetBottom.position.y = py + 2;
+		cabinetBottom.position.z = pz;
+		
+		targetList.push(cabinetTop);
+		targetList.push(cabinetBottom);
+		scene.add(cabinetTop);
+		scene.add(cabinetBottom);
+		cabinet.top = cabinetTop;
+		cabinet.bottom = cabinetBottom;
+		
+		// 机柜的门
+		var doorGeometry = new THREE.BoxGeometry(w, h, 2);
+		var doorMaterial =  new THREE.MeshBasicMaterial({color:0x003333, opacity: 0.5, transparent:true});
+		var door = new THREE.Mesh(doorGeometry, doorMaterial);
+		
+		door.position.x = px;
+		door.position.y = py + h / 2 + 1;
+		door.position.z = pz + d / 2;
+		door.toggle = function(o){
+			console.log(o);
+			if (o.rotation.y == 0){
+				o.rotation.y = o.rotation.y + Math.PI * 3 / 5;
+				o.position.x = o.position.x + w / 2 + 3;
+				o.position.z = o.position.z + d / 2;
+			} else {
+				o.rotation.y = o.rotation.y - Math.PI * 3 / 5;
+				o.position.x = o.position.x - w / 2 - 3;
+				o.position.z = o.position.z - d / 2;
+			}
+		};
+		
+		scene.add(door);
+		cabinet.front = door;
+		targetList.push(door);
+		
+		// 机柜里的服务器
+		cabinet.servers = [];
+		if (c && c.servers) {
+		  cabinet.info = c;
+		  for (var i=0; i<c.servers.length; i++) {
+		    var server = createServer(w-4, 4, d-4, px, py + (9*(i+1)), pz+2);   // 服务器的厚度默认为 4， 服务器之间的间隔为 5
+		    cabinet.servers.push(server);
+		  }
+		}
+		
+		return cabinet;
+	}
+	
+	// 服务器
+	function createServer(w, h, d, px, py, pz){
+		var texture = new THREE.ImageUtils.loadTexture('./img/server.png');
+		texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+		texture.repeat.set( 1, 1 );
+		
+		var texture_back = new THREE.ImageUtils.loadTexture( './img/server-back.png' );
+		texture_back.wrapS = texture_back.wrapT = THREE.RepeatWrapping; 
+		texture_back.repeat.set( 1, 1 );
+		
+		var serverGeometry = new THREE.BoxGeometry(w, h, d);
+		var materialArray = [];
+		materialArray.push( new THREE.MeshBasicMaterial( { color: 0xbbbbbb } ) );
+		materialArray.push( new THREE.MeshBasicMaterial( { color: 0xbbbbbb } ) );
+		materialArray.push( new THREE.MeshBasicMaterial( { color: 0xbbbbbb } ) );
+		materialArray.push( new THREE.MeshBasicMaterial( { color: 0xbbbbbb } ) );
+		materialArray.push( new THREE.MeshBasicMaterial( { map: texture } ) );
+		materialArray.push( new THREE.MeshBasicMaterial( { map: texture_back } ) );
+		var material = new THREE.MeshFaceMaterial( materialArray );
+		var server = new THREE.Mesh( serverGeometry, material );
+		
+		server.position.x = px;
+		server.position.y = py;
+		server.position.z = pz;
+		
+		scene.add(server);
+		targetList.push(server);
+	}
+	
+	//鼠标监听事件
+	 function onDocumentMouseMove( event ) {
+	   mouse.x = ( event.clientX / SCREEN_WIDTH ) * 2 - 1;
+	   mouse.y = - ( event.clientY / SCREEN_HEIGHT ) * 2 + 1;
+	   
+	   var vector = new THREE.Vector3( mouse.x, mouse.y, 1 );
+	   projector.unprojectVector( vector, camera );
+	   var ray = new THREE.Raycaster( camera.position, vector.sub( camera.position ).normalize() );
+	 
+	   var intersects = ray.intersectObjects( targetList );
+	 
+	   if ( intersects.length > 0 )
+	   {
+	     var o = intersects[ 0 ].object;
+	     if (typeof o.hover == 'function') {
+	       o.hover(o);
+	     } else {
+	       closeHover();
+	     }
+	   }
+	 }
+	 
+	 function onDocumentMouseDown( event ) { 
+	   mouse.x = ( event.clientX / SCREEN_WIDTH ) * 2 - 1;
+	   mouse.y = - ( event.clientY / SCREEN_HEIGHT ) * 2 + 1;
+	   var vector = new THREE.Vector3( mouse.x, mouse.y, 1 );
+	   projector.unprojectVector( vector, camera );
+	   var ray = new THREE.Raycaster( camera.position, vector.sub( camera.position ).normalize() );
+	 
+	   var intersects = ray.intersectObjects( targetList );
+	 
+	   if ( intersects.length > 0 ){
+	       var o = intersects[ 0 ].object;
+	       if (typeof o.toggle == 'function') {
+	         o.toggle(o);
+	       }
+	   }
+	 };
+	 
+	// function mousedown( event ) {
+	//   mouse.x = ( event.clientX / SCREEN_WIDTH ) * 2 - 1;
+	//   mouse.y = - ( event.clientY / SCREEN_HEIGHT ) * 2 + 1;
+	//   raycaster.setFromCamera(mouse, camera);
+
+	//   var intersects = raycaster.intersectObjects( targetList );
+	
+	//   if ( intersects.length > 0 ){
+	//       var o = intersects[ 0 ].object;
+	//       if (typeof o.toggle == 'function') {
+	//         o.toggle(o);
+	//       }
+	//   }
+	// };
+	
+</script>
+
+</body>
+</html>
